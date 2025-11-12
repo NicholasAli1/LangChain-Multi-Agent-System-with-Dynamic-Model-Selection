@@ -15,22 +15,35 @@ def setup_langsmith():
     
     This should be called at the start of the application.
     """
-    if LANGCHAIN_TRACING_V2 and LANGCHAIN_API_KEY:
+    # Re-read from environment to ensure we have latest values
+    api_key = os.getenv("LANGCHAIN_API_KEY", "").strip('"\'')
+    tracing_v2 = os.getenv("LANGCHAIN_TRACING_V2", "false").strip('"\'').lower() == "true"
+    project = os.getenv("LANGCHAIN_PROJECT", "langchain_multi_model").strip('"\'')
+    
+    # Also check the config values (in case .env was loaded after config import)
+    if not api_key and LANGCHAIN_API_KEY:
+        api_key = LANGCHAIN_API_KEY
+    if not tracing_v2 and LANGCHAIN_TRACING_V2:
+        tracing_v2 = LANGCHAIN_TRACING_V2
+    if project == "langchain_multi_model" and LANGCHAIN_PROJECT != "langchain_multi_model":
+        project = LANGCHAIN_PROJECT
+    
+    if tracing_v2 and api_key:
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
-        os.environ["LANGCHAIN_API_KEY"] = LANGCHAIN_API_KEY
-        os.environ["LANGCHAIN_PROJECT"] = LANGCHAIN_PROJECT
+        os.environ["LANGCHAIN_API_KEY"] = api_key
+        os.environ["LANGCHAIN_PROJECT"] = project
         
         # Optional: Set endpoint (defaults to https://api.smith.langchain.com)
         langchain_endpoint = os.getenv("LANGCHAIN_ENDPOINT")
         if langchain_endpoint:
             os.environ["LANGCHAIN_ENDPOINT"] = langchain_endpoint
         
-        print(f"✅ LangSmith tracing enabled for project: {LANGCHAIN_PROJECT}")
+        print(f"✅ LangSmith tracing enabled for project: {project}")
         return True
     else:
-        if not LANGCHAIN_API_KEY:
+        if not api_key:
             print("ℹ️  LangSmith API key not set. Set LANGCHAIN_API_KEY to enable tracing.")
-        if not LANGCHAIN_TRACING_V2:
+        if not tracing_v2:
             print("ℹ️  LangSmith tracing disabled. Set LANGCHAIN_TRACING_V2=true to enable.")
         return False
 
