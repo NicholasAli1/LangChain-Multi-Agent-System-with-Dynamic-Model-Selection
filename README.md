@@ -35,7 +35,7 @@
 
 ```bash
 # 1. Clone and setup
-git clone <your-repo>
+git clone https://github.com/NicholasAli1/LangChain-Multi-Agent-System-with-Dynamic-Model-Selection
 cd langchain_multi_model
 
 # 2. Create virtual environment
