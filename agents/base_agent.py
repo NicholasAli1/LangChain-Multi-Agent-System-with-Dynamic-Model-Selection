@@ -6,6 +6,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from models.model_router import ModelRouter
+from utils.memory import VectorMemory
 
 
 class BaseAgent(ABC):
@@ -16,6 +17,7 @@ class BaseAgent(ABC):
         name: str,
         model_router: Optional[ModelRouter] = None,
         system_prompt: Optional[str] = None,
+        use_memory: bool = True,
     ):
         """
         Initialize the base agent.
@@ -24,22 +26,25 @@ class BaseAgent(ABC):
             name: Agent name/identifier
             model_router: Model router instance (creates new one if None)
             system_prompt: System prompt for the agent
+            use_memory: Whether to use vector memory for long-term storage
         """
         self.name = name
         self.model_router = model_router or ModelRouter()
         self.system_prompt = system_prompt or self._get_default_system_prompt()
         self.conversation_history: List[BaseMessage] = []
+        self.memory = VectorMemory(collection_name=f"{name}_memory") if use_memory else None
     
     def _get_default_system_prompt(self) -> str:
         """Get default system prompt for the agent."""
         return f"You are {self.name}, a helpful AI assistant."
     
-    def _build_prompt(self, user_input: str) -> List[BaseMessage]:
+    def _build_prompt(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> List[BaseMessage]:
         """
-        Build the prompt with system message and conversation history.
+        Build the prompt with system message, relevant memory, and conversation history.
         
         Args:
             user_input: User's input message
+            context: Optional context dictionary
             
         Returns:
             List of messages for the LLM
@@ -49,6 +54,13 @@ class BaseAgent(ABC):
         # Add system message (use SystemMessage for proper handling)
         if self.system_prompt:
             messages.append(SystemMessage(content=self.system_prompt))
+        
+        # Add relevant context from memory if available
+        if self.memory:
+            relevant_context = self.memory.get_relevant_context(user_input, k=2)
+            if relevant_context:
+                context_msg = f"Relevant previous conversations:\n{relevant_context}\n\n"
+                messages.append(SystemMessage(content=context_msg))
         
         # Add conversation history
         messages.extend(self.conversation_history)
@@ -86,7 +98,7 @@ class BaseAgent(ABC):
         model = self._select_model(input_text, context)
         
         # Build messages
-        messages = self._build_prompt(input_text)
+        messages = self._build_prompt(input_text, context)
         
         # Get response
         response = model.invoke(messages)
@@ -100,6 +112,17 @@ class BaseAgent(ABC):
         # Update conversation history
         self.conversation_history.append(HumanMessage(content=input_text))
         self.conversation_history.append(AIMessage(content=response_text))
+        
+        # Store in long-term memory
+        if self.memory:
+            self.memory.add_conversation(
+                task=input_text,
+                response=response_text,
+                metadata={
+                    "agent": self.name,
+                    "model": context.get("model_key") if context else None
+                }
+            )
         
         # Keep history manageable (last 10 exchanges)
         if len(self.conversation_history) > 20:

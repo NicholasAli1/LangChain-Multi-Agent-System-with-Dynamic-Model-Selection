@@ -43,3 +43,9 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Memory and feedback data
+memory/
+feedback/
+*.faiss
+*.pkl
+

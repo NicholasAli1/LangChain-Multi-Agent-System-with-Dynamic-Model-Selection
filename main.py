@@ -3,6 +3,10 @@
 from agents.supervisor import Supervisor
 from models.model_router import ModelRouter
 from utils.state import AgentState
+from utils.langsmith_setup import setup_langsmith
+
+# Set up LangSmith tracing if configured
+setup_langsmith()
 
 
 def main():

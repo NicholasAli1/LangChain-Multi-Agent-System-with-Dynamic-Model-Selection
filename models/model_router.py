@@ -4,14 +4,22 @@ from typing import Dict, List, Optional, Any
 from langchain_core.language_models import BaseChatModel
 from models.model_factory import ModelFactory
 from config.settings import MODEL_CONFIGS, MODEL_SELECTION_CRITERIA
+from utils.feedback import FeedbackManager
 
 
 class ModelRouter:
     """Routes tasks to the most appropriate model based on task characteristics."""
     
-    def __init__(self):
+    def __init__(self, use_feedback: bool = True):
+        """
+        Initialize model router.
+        
+        Args:
+            use_feedback: Whether to use feedback for model selection
+        """
         self.model_factory = ModelFactory()
         self.selection_history: List[Dict[str, Any]] = []
+        self.feedback_manager = FeedbackManager() if use_feedback else None
     
     def analyze_task(self, task: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -102,6 +110,17 @@ class ModelRouter:
                 # Default to gemma3 for moderate complexity
                 model_key = "gemma3"
         
+        # Priority 5: Use feedback if available
+        if self.feedback_manager:
+            feedback_model = self.feedback_manager.get_best_model_for_task_type(
+                characteristics.get("complexity", "simple")
+            )
+            if feedback_model and feedback_model in MODEL_CONFIGS:
+                # Use feedback-informed model if it has good ratings
+                perf = self.feedback_manager.get_model_performance(feedback_model)
+                if perf["count"] >= 3 and perf["average_rating"] >= 4.0:
+                    model_key = feedback_model
+        
         # Get the model instance
         model = self.model_factory.get_llm(model_key)
         
@@ -122,4 +141,34 @@ class ModelRouter:
     def clear_history(self):
         """Clear the selection history."""
         self.selection_history.clear()
+    
+    def record_feedback(
+        self,
+        task: str,
+        selected_model: str,
+        rating: int,
+        comments: Optional[str] = None
+    ):
+        """
+        Record feedback on model selection.
+        
+        Args:
+            task: The task that was performed
+            selected_model: The model that was selected
+            rating: Rating from 1-5
+            comments: Optional comments
+        """
+        if self.feedback_manager:
+            self.feedback_manager.record_feedback(
+                task=task,
+                selected_model=selected_model,
+                rating=rating,
+                comments=comments
+            )
+    
+    def get_feedback_summary(self) -> Optional[Dict[str, Any]]:
+        """Get feedback summary."""
+        if self.feedback_manager:
+            return self.feedback_manager.get_feedback_summary()
+        return None
 

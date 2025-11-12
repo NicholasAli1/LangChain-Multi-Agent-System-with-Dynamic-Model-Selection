@@ -9,6 +9,10 @@ import time
 from agents.supervisor import Supervisor
 from models.model_router import ModelRouter
 from utils.errors import WorkflowError
+from utils.langsmith_setup import setup_langsmith
+
+# Set up LangSmith tracing if configured
+setup_langsmith()
 
 app = FastAPI(title="LangChain Multi-Agent API", version="1.0.0")
 
@@ -174,6 +178,54 @@ async def chat_completions(request: ChatCompletionRequest):
         raise HTTPException(status_code=500, detail=f"Workflow error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+class FeedbackRequest(BaseModel):
+    task: str
+    selected_model: str
+    rating: int  # 1-5
+    comments: Optional[str] = None
+
+
+@app.post("/v1/feedback")
+async def submit_feedback(request: FeedbackRequest):
+    """
+    Submit feedback on model selection performance.
+    
+    This helps improve model selection over time.
+    """
+    try:
+        if not 1 <= request.rating <= 5:
+            raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+        
+        model_router.record_feedback(
+            task=request.task,
+            selected_model=request.selected_model,
+            rating=request.rating,
+            comments=request.comments
+        )
+        
+        return {
+            "status": "success",
+            "message": "Feedback recorded successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error recording feedback: {str(e)}")
+
+
+@app.get("/v1/feedback/summary")
+async def get_feedback_summary():
+    """Get summary of feedback data."""
+    try:
+        summary = model_router.get_feedback_summary()
+        if summary:
+            return summary
+        return {
+            "message": "No feedback data available yet",
+            "total_feedback_entries": 0
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting feedback summary: {str(e)}")
 
 
 if __name__ == "__main__":
